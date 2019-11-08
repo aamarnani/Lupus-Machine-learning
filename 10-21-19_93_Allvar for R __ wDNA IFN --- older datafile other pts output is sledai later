@@ -1,0 +1,268 @@
+#10-21-19_93_Allvar for R __ wDNA IFN --- older datafile other pts output is sledai later
+#Output is median SLEDIA bin >=4 is 2, <4 is 1
+
+# Read Data
+setwd("/data/amarnanian/Test Lupus data")
+data <- read.csv("/spin1/USERS1/amarnanian/Test Lupus data/10-21-19_93_FinalVar_WIgEWOIFNscore_WOTimeVisits.csv", header = TRUE, 
+                 na.strings = " ")
+
+data <- data.frame(data)
+str(data)
+data$BinaryMedianSledai <- as.factor(data$BinaryMedianSledai)
+str(data)
+
+table(data$BinaryMedianSledai)
+
+#1  2 
+#61 32 
+
+#Data partition
+set.seed(123)
+ind <- sample(2, nrow(data), replace = TRUE, prob = c(0.6777, 0.333))
+train <- data[ind==1,]
+test <- data[ind==2,]
+
+summary(data)
+prop.table(table(data$BinaryMedianSledai))
+barplot(prop.table(table(data$BinaryMedianSledai)),
+        col = rainbow(2),
+        ylim = c(0, 0.7),
+        main = "Median Sledai Output")
+#1        2 
+#0.655914 0.344086 
+
+#output is later SLEDAI >=4 is 2, NOT THAT is 1.
+
+#Default RF settings - Train data
+library(randomForest)
+set.seed(222)
+rf <- randomForest(BinaryMedianSledai~., data=train, importance = TRUE, proximity = TRUE)
+print(rf)     
+
+# Prediction & Confusion Matrix - train data
+library(caret)
+p1 <- predict(rf, train)
+confusionMatrix(p1, train$BinaryMedianSledai, positive = '2')
+
+#Prediction and confusion- test data
+p2 <- predict(rf, test)
+confusionMatrix(p2, test$BinaryMedianSledai, positive = '2')
+
+plot(rf)
+
+
+t <- tuneRF(train[,-34], train[,34],
+               stepFactor = 0.5,
+               plot = TRUE,
+               ntreeTry = 500,
+               trace = TRUE,
+               improve = 0.05)
+
+#Lowest at 2
+rf <- randomForest(BinaryMedianSledai~., data=train,
+                      ntree = 500,
+                      mtry = 2,
+                      importance = TRUE,
+                      proximity = TRUE)
+
+print(rf)
+plot(rf)
+
+#now this is with tuned RF model
+#Train
+p1 <- predict(rf, train)
+confusionMatrix(p1, train$BinaryMedianSledai, positive = '2')
+
+#Test
+p2 <- predict(rf, test)
+confusionMatrix(p2, test$BinaryMedianSledai, positive = '2')
+
+#Confusion Matrix and Statistics
+#
+#Reference
+#Prediction  1  2
+#1 19  6
+#2  1  5
+#
+#Accuracy : 0.7742         
+#95% CI : (0.589, 0.9041)
+#No Information Rate : 0.6452         
+#P-Value [Acc > NIR] : 0.09153        
+#
+#Kappa : 0.4506
+#Mcnemar's Test P-Value : 0.13057        
+
+#Sensitivity : 0.4545         
+#Specificity : 0.9500         
+#Pos Pred Value : 0.8333         
+#Neg Pred Value : 0.7600         
+#Prevalence : 0.3548         
+#Detection Rate : 0.1613         
+#Detection Prevalence : 0.1935         
+#Balanced Accuracy : 0.7023         
+#
+#'Positive' Class : 2
+
+
+
+
+# No. of nodes for the trees
+hist(treesize(rf),
+     main = "No. of Nodes for the Trees",
+     col = "green")
+
+
+#VariableImpPlot
+varImpPlot(rf)
+varImpPlot(rf, type = NULL,
+           sort = T,
+           n.var = 20,
+           main = "Top 20 - Variable Importance")
+
+#IFN signature is high so that is good.
+#Take out SLEDAI input as well
+
+importance(rf)
+rf$importance
+#write.table(rf$importance, file="10-21-19RFexportedimportancevariables.csv", sep=",")
+
+
+## Variable Used
+varUsed(rf)
+varused <-varUsed(rf)
+write.table(varused, file="exportedvariablesusedLupus10-21-19test.csv", sep=",")
+
+
+# Partial Dependence Plot
+partialPlot(rf, data, Low.Complement, "1")
+partialPlot(rf, data, Low.Complement, "2")
+
+
+#Just exported one by one. Mya not even use these plots in figure.
+
+#Can add to existing plot... can only add from the same group to each other though e.g.
+partialPlot(rf, train, P01009, "2", plot = TRUE, add = FALSE)
+partialPlot(rf273, train273, P08670.4, "2", plot=T, add=T)
+?partialPlot
+#X axis is the value ... and the Y axis is the arbitrary units for or less likely?Arbitrary. When higher then ___ then more likley to predict.
+
+# Extract Single Tree
+getTree(rf, 2, labelVar = TRUE)
+
+# Multi-dimensional Scaling Plot of Proximity Matrix
+rftrain <- randomForest(BinaryMedianSledai~., data=train, importance = TRUE, proximity = TRUE)
+rftest <- randomForest(BinaryMedianSledai~., data=test, importance = TRUE, proximity = TRUE)
+#Unclear what this means? - all the data applied with the model built base don training data?
+MDSplot(rf, data$BinaryMedianSledai)
+
+#Changes the color of same dots because whether correct or not?
+MDSplot(rf, train$Later.Sledai..Categorized.)
+MDSplot(rf, test$Later.Sledai..Categorized.)
+
+MDSplot(rftrain, train$Later.Sledai..Categorized.)
+MDSplot(rftest, test$Later.Sledai..Categorized.)
+
+
+
+#For ROC AUC Plot -- why is it elbow lke that?
+library(pROC)
+p2 <- predict(rf, test)
+confusionMatrix(p2, test$BinaryMedianSledai)
+
+##table(factor(, levels=min(test):max(test)), 
+  ##  factor(test, levels=min(test):max(test)))
+
+
+?predict
+rf.roc <- roc(test$BinaryMedianSledai, predictor= factor(p2,ordered = TRUE))
+rf.roc <- plot.roc(test$BinaryMedianSledai, predictor= factor(p2,ordered = TRUE), legacy.axes = TRUE)
+
+?roc
+auc <- auc(rf.roc)
+auc_legend <- round (auc,4)
+legend (0.6,0.2,auc_legend, title="AUC Lupus test 10-1", cex=1.0)
+
+
+#ForROC AUC Plot
+require(pROC)
+predictions <-as.data.frame(predict(rf,test,type="prob"))
+
+
+
+#HOw can we make it so it isn't an elbow liek that? Not plotting probability.
+
+# predict class and then attach test class
+predictionsLN$ <- names(predictions)[1:3][apply(predictions[,1:3], 1, which.max)]
+predictionsLN$observed <- test$condition
+head(predictions)
+
+
+
+smooth.roc <- smooth.roc(rf.roc)
+#error
+
+# Use predict with type="prob" to get class probabilities
+#iris.predictions <- predict(mn.net, newdata=iris.test, type="prob")
+#head(iris.predictions)
+# This can be used directly in multiclass.roc:
+#multiclass.roc(iris.test$Species, iris.predictions)
+
+
+
+rf.roc <- roc(test$Later.Sledai..Categorized., predictor= factor(p2,ordered = TRUE))
+#error
+
+ 
+######NewModel with less variables
+rm(list = ls(all.names = TRUE))
+
+#See the different attributes
+attributes(rf)
+
+#[1] "call"            "type"            "predicted"       "err.rate"        "confusion"      
+#[6] "votes"           "oob.times"       "classes"         "importance"      "importanceSD"   
+#[11] "localImportance" "proximity"       "ntree"           "mtry"            "forest"         
+#[16] "y"               "test"            "inbag"           "terms"          
+
+
+attributes(rf$votes)
+
+
+
+
+#$class
+
+
+
+require(randomForest)
+data
+
+# This will make drop a class to make it a 2 class problem
+dataROCtest <-data[-which(data$Later.Sledai..Categorized.=="Sledai High"),]
+dataROCtest$Later.Sledai..Categorized.<-as.factor(as.character(dataROCtest$Later.Sledai..Categorized.))
+
+set.seed(71)
+rf <- randomForest(Later.Sledai..Categorized.~., data=train, importance = TRUE, proximity = TRUE)
+rftest <-randomForest()
+
+require(pROC)
+rf.roc<-roc(data$Later.Sledai..Categorized.,rf$votes[,2])
+#Issues says need sto be same level --- gives same AUC but can't plot
+plot(rf.roc)
+auc(rf.roc)
+
+plot.separation = function(rf,...) {
+  triax.plot(rf$votes,...,col.symbols = c("#FF0000FF",
+                                          "#00FF0010",
+                                          "#0000FF10")[as.numeric(rf$y)])
+}
+
+
+
+
+   
+    
+
+
+
+
