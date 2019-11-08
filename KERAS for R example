@@ -1,0 +1,249 @@
+#Sample data from http://rpubs.com/juanhklopper/deep_neural_network_example
+#Youtube - https://www.youtube.com/watch?v=CHJzoFArI8c
+
+library(readr)
+library(keras)
+library(DT)
+setwd("/data/amarnanian/Data Files Wd")
+data.set <- read_csv("10-1-19_For_KERAS_Test Data wo Pt IDs_wYN_woSLEDAINum.csv",
+                     col_names = TRUE)
+datatable(data.set[sample(nrow(data.set),
+                          replace = FALSE,
+                          size = 0.05 * nrow(data.set)), ])
+#This gives me random sample of 5% of the data to show in the example, all rows and colums
+
+summary(data.set)
+#write.table(data.set, file="dataset10-1-19_For_KERAS_Test Data wo Pt IDs_wYN_woSLEDAINum.csv", sep=",")
+
+# Cast dataframe as a mathematical matrix
+data.set <- as.matrix(data.set)
+
+# Remove column names/headers
+#Must have yes and no as numbers, cannot have stuff written in"Cannot have benign etc"
+dimnames(data.set) = NULL
+
+# Split for train and test data (Kept at 0.677 and 0.333)
+set.seed(123)
+indx <- sample(2,
+               nrow(data.set),
+               replace = TRUE,
+               prob = c(0.677, 0.333)) 
+# Makes index with values 1 and 2
+
+
+# Select only the feature variables
+# Take rows with index = 1
+#Customary to call features of input as x in ML
+#only want the feature varaibles to set to number of columns minus 1 #Splits the data
+x_train <- data.set[indx == 1, 1:59]
+x_test <- data.set[indx == 2, 1:59]
+
+#Target variable split - Want a seperate object when do test. Want to save it seperately
+#For us it is column 60 becuase that is where output is
+#Store y seepratebley because is test
+y_test_actual <- data.set[indx == 2, 60]
+
+# Using similar indices to correspond to the training and test set
+#This turns on-hot -encoded - Makes two dummy variables. If more than need more. 1 is one of the elements and 2 is the other one.
+#not sure about the 1 and 0 thing alked about in youtube video #only column 60 # one hot encoding was a 1
+#output variable must start 0 and 1 as is did 0 and 1.
+y_train <- to_categorical(data.set[indx == 1, 60])
+y_test <- to_categorical(data.set[indx == 2, 60])
+
+#Show first five target variables of the test set
+#only 1:10 shows whats in the dataset. #show the one hot encoding. # if you need to hvae more than 2 .. then you can do this well to make more than one node.
+cbind(y_test_actual[1:10],
+      y_test[1:10, ])
+
+# Creating the model #can do with sequential model or can do functional API. functional APi is very intricate ... sequential is more straight forward
+model <- keras_model_sequential()
+
+#% is short hand .. takes what is on L passes that as a first argument, pipe lets you embed in other things.
+#This model.. has layer upon layer. x3. thi sis part of tidy verse.
+#This first layer is a densely connected layer #Very optional argument - no spaces. named it deeplayer1
+#Said must have 10 nodes because 10 feature variables for us here going to use 59 units because 59 variables
+# You decide on th ehypervariable ... that is the design of the experiemnt. Good start is put number of nodes for number of input variables
+#Must stipulate the input shape for the first layer. put in the dimensions of the vector.
+# passing number of feature variables in... tensor mathematics need correct dimensions
+#second layer also densely connected.
+#Did third one ... activation is softmax ... is activation function that takes number of units, number of nodes in layer 2 for output
+#Soft max provides probability of 1st and 2nd node so adds up to 1. Will giv eprob for 1st node and 2nd node.
+#Lastly will summarize the model
+
+model %>% 
+  layer_dense(name = "DeepLayer1",
+              units = 59,
+              activation = "relu",
+              input_shape = c(59)) %>% 
+  layer_dense(name = "DeepLayer2",
+              units = 59,
+              activation = "relu") %>% 
+  layer_dense(name = "OutputLayer",
+              units = 2,
+              activation = "softmax")
+
+summary(model)
+
+#output --- 
+#Model: "sequential_2"
+#_____________________________________________________________________________________________
+#Layer (type)                             Output Shape                          Param #       
+#=============================================================================================
+#  DeepLayer1 (Dense)                       (None, 59)                            3540          
+#_____________________________________________________________________________________________
+#DeepLayer2 (Dense)                       (None, 59)                            3540          
+#_____________________________________________________________________________________________
+#OutputLayer (Dense)                      (None, 2)                             120           
+#=============================================================================================
+#  Total params: 7,200
+#Trainable params: 7,200
+#Non-trainable params: 0
+
+#has to learn through high number of parameters because high number of variables in.... 59 in input and 59x59 and each in 1st also needs extra 59 in.
+#So is 59x59 + 59
+#last one is 59 + 59 + 2
+
+#As designed, this shows There are three columns in the summary,
+#the first giving the layer name (as optionally specified when the network was created) 
+#and its type. All of the layers are densely connected layers in this example. 
+#The Output Shape column specifies the output shape (after tensor multiplication, bias addition, 
+#and activation, i.e. forward propagation). The Param # column indicates the number of parameters 
+#(weights and biases) that the specific layer must learn.
+
+#Before fitting the training data, the model requires
+#compilation ... the loss function optimizer and metrics are specific
+#durign this step. in this example, we use categorical cross-entropy  as the loss function
+#this is a multi-class classification problem so that is wha tyou use for that. .. why? idk need to read more
+#Adam is the optimizer is used for gradient descent and accuracy for the metric
+#instead of mean square error .. use categorical crossentropy --- say sis better loss function
+
+#Compiling the model
+model %>% compile(loss = "categorical_crossentropy",
+                  optimizer = "adam",
+                  metrics = c("accuracy"))
+
+#Fitting the data -
+#other things for fitting - cal fitting history. pass to fit function in keras... 
+#Forus the epoch is how many times going to have full forwrad and back. going to all the data once forward
+#so do 59 because number of variables in through the derivatives. Go through once and back.
+#Go back and forth 10 times is what example did had 10 variables.  you chose 59 times. SHould be better each time
+# For batch size --- used 256 when had 45000 variables to evaluate .. for us smaller batch size because.
+#batch size is per experimetn as you think design should be. --- smaller peices. He id a 175 fractoin of his input samples. For me arbitrarily picked 2 since only 31 samples in test dataset.
+
+#If using GPU then make it a power of 2 for the mini-batch size. works better for memory if to the power of 2.
+#hyperparameters I set - splitting the training set within the learning purpose
+#Can retest itself within the training set. ... If validatoin doesn't help... and doesn't come down then won't generalize well.
+#verbos is what to show.
+
+history <- model %>% 
+  fit(x_train,
+      y_train,
+      epoch = 59,
+      batch_size = 2,
+      validation_split = 0.1,
+      verbose = 2)
+
+#received error here cannot have 3+4 it is invalid character.
+#corrected and worked ... but everytime you run it the results are very different... oh rerunning on same should not too.
+#wiping data from here and then doing again.
+#59 is too many epochs -- 
+#accuracy is correct predictions minus the model
+#Error got good .. close to each other. - the validation set 
+#The acc and validation aren't generalizing perfectly with more epochs.
+#Train on 52 samples, validate on 6 samples
+#Epoch 1/59
+#52/52 - 1s - loss: 9.0056 - acc: 0.5577 - val_loss: 1.7573 - val_acc: 0.3333
+#Epoch 2/59
+#52/52 - 0s - loss: 2.0120 - acc: 0.5769 - val_loss: 0.5002 - val_acc: 0.8333
+#Epoch 3/59
+#52/52 - 0s - loss: 0.5488 - acc: 0.8269 - val_loss: 0.0253 - val_acc: 1.0000
+#Epoch 4/59
+#52/52 - 0s - loss: 1.0931 - acc: 0.7692 - val_loss: 1.2524 - val_acc: 0.8333
+#Epoch 5/59
+# output figure in 102-19 .ppt.
+#How can we change the enerual netowrk model to improve this?
+#
+
+
+#Gives output of the plot
+plot(history)
+
+# Model Evaluation
+model %>% 
+  evaluate(x_test,
+           y_test)
+
+#30/30 [==============================] - 0s 40us/sample - loss: 1.5420 - acc: 0.8333
+#$loss
+#[1] 1.54196#
+#$acc
+#[1] 0.8333333
+
+#of data never seen before los is 1.5 and acc was 83%
+#Are the variabls that cause the actual outcome? the variables we put in here?
+
+#Only prediction for test 1 or 0 and pass to table. will have 2 rows and 2 columsn preds and actual
+#confusion matrix
+
+pred <- model %>% 
+  predict_classes(x_test)
+
+table(Predicted = pred,
+      Actual = y_test_actual)
+
+#Actual
+#Predicted   0  1
+#         0  7  0
+#         1  5 18
+
+prob <- model %>% 
+  predict_proba(x_test)
+
+#This prints the first 5 probabilities
+#probability of the second one... probability in one hot encoding the second node
+#prediction of 0 and 1 ... probabilyt of 1st one. the 0. Probabilyt of the 1?
+1 - prob[1:5]
+
+#[1] 8.690357e-05 1.150101e-02 3.159642e-03 2.900279e-02 1.090658e-02
+#?? actual values in second node --- onl looking at probability of second node fro msoft max function
+#
+#
+#
+
+cbind(1 - prob[1:10],
+      pred[1:10],
+      y_test_actual[1:10])
+
+#        [,1] [,2] [,3]
+#[1,] 8.690357e-05    0    0
+#[2,] 1.150101e-02    0    0
+#[3,] 3.159642e-03    0    0
+#[4,] 2.900279e-02    0    0
+#[5,] 1.090658e-02    0    0
+#[6,] 9.938374e-01    1    0
+#[7,] 4.643798e-02    0    0
+#[8,] 9.787758e-01    1    0
+#[9,] 9.999872e-01    1    0
+#[10,] 9.999908e-01    1    0
+
+#Number sin example viddeo are 0.99 from his example data... they match often and give high value for good prob.
+#here getting very low values
+##
+
+
+#retry with less epochs## trying different ones here instead of the one above.
+history <- model %>% 
+  fit(x_train,
+      y_train,
+      epoch = 20,
+      batch_size =2,
+      validation_split = 0.1,
+      verbose = 2)
+
+#Batch size of 1 is horrible -- does max out well after 40 and stuck final at 0.83 acc val.
+#Said to keep power of 2
+#If trying again need to rm(list=ls()) to run again.
+#
+#
+# Improvements to model made with help frim https://www.youtube.com/watch?v=KVNA13uRxtg&list=PLsu0TcgLDUiIKPMXu1k_rItoTV8xPe1cj&index=15
+
